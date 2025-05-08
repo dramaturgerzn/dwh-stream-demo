@@ -1,0 +1,103 @@
+# docker-compose.yml
+version: "3.8"
+
+services:
+  # -------------------- CORE ---------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    healthcheck:
+      test: ["CMD", "echo", "ruok", "|", "nc", "-w", "2", "localhost", "2181"]
+      interval: 10s
+      retries: 15
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9092"]
+      interval: 10s
+      retries: 15
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+
+  connect:
+    image: debezium/connect:2.5
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 30s
+      retries: 6
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.12
+    ports: ["8123:8123","9000:9000"]
+    ulimits:
+      nofile: {soft: 262144, hard: 262144}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 15
+
+  # -------------------- PRODUCT DBs ---------------------------
+  ecommerce-db:
+    image: debezium/postgres:15
+    environment:
+      POSTGRES_DB: ecommerce
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5433:5432"]
+    volumes: ["./init/ecommerce:/docker-entrypoint-initdb.d"]
+
+  insurance-db:
+    image: debezium/postgres:15
+    environment:
+      POSTGRES_DB: insurance
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5434:5432"]
+    volumes: ["./init/insurance:/docker-entrypoint-initdb.d"]
+
+  credit-db:
+    image: debezium/postgres:15
+    environment:
+      POSTGRES_DB: credit
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5435:5432"]
+    volumes: ["./init/credit:/docker-entrypoint-initdb.d"]
+
+  # -------------------- STREAM APP ----------------------------
+  faust:
+    build: ./faust-app
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      KAFKA_URL: kafka://kafka:9092
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_DB: default

@@ -1,0 +1,27 @@
+{
+  "name": "postgres-credit-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "credit-db",
+    "database.port": "5432",
+    "database.user": "stream",
+    "database.password": "streaming",
+    "database.dbname": "credit",
+    "database.server.name": "credit",
+
+    "slot.name": "credit_slot",
+    "plugin.name": "pgoutput",
+    "topic.prefix": "credit",
+    "snapshot.mode": "initial",
+
+    "tombstones.on.delete": "false",
+    "include.schema.changes": "false",
+
+    "publication.name": "credit_pub",
+    "publication.autocreate.mode": "disabled",
+
+    "table.include.list": "public.loan,public.payment"
+  }
+}

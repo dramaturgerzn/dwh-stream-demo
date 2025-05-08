@@ -1,0 +1,27 @@
+{
+  "name": "postgres-ecommerce-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "ecommerce-db",
+    "database.port": "5432",
+    "database.user": "stream",
+    "database.password": "streaming",
+    "database.dbname": "ecommerce",
+    "database.server.name": "ecommerce",
+
+    "slot.name": "ecommerce_slot",
+    "plugin.name": "pgoutput",
+    "topic.prefix": "ecommerce",
+    "snapshot.mode": "initial",
+
+    "tombstones.on.delete": "false",
+    "include.schema.changes": "false",
+
+    "publication.name": "ecommerce_pub",
+    "publication.autocreate.mode": "disabled",
+
+    "table.include.list": "public.orders,public.order_items,public.customers"
+  }
+}
