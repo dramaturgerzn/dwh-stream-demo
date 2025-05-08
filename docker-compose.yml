@@ -101,3 +101,16 @@ services:
       KAFKA_URL: kafka://kafka:9092
       CLICKHOUSE_HOST: clickhouse
       CLICKHOUSE_DB: default
+
+  # -------------------- Data gen ----------------------------
+  load-gen:
+    build:
+      context: ./load-gen
+    environment:
+      PG_DSN: "dbname=ecommerce host=postgres user=app password=app"
+      DURATION: "30"
+      BATCH: "1000"
+      ORDER_ID_START: "1000000"
+    depends_on:
+      - postgres
+    profiles: [ "dev-load" ]
