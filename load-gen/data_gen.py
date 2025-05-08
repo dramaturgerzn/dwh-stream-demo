@@ -1,8 +1,9 @@
 """
-Льём «залповый» трафик в ecommerce.orders / order_items.
-По-умолчанию 30 секунд ≈ 30 000-60 000 заказов (зависит от BATCH).
-Все параметры можно переопределить через env.
+Генерирует «залповый» поток заказов + позиций.
+Идентификаторы берутся из штатных секвенсов → дубликатов не будет,
+даже при повторных запусках генератора.
 """
+
 import os, random, time
 from datetime import datetime
 from decimal import Decimal
@@ -12,58 +13,58 @@ from faker import Faker
 
 fake = Faker()
 
-# ───── параметры через env ───────────────────────────────────────────────
-SECONDS  = int(os.getenv("DURATION", 30))      # сколько секунд льём
-BATCH    = int(os.getenv("BATCH", 1_000))      # заказов в одной транзакции
-START_ID = int(os.getenv("ORDER_ID_START", 1_000_000))
-DSN      = os.getenv(
+# ─────────────── параметры ───────────────────────────────────────────────
+SECONDS  = int(os.getenv("DURATION", 30))        # сколько секунд льём
+BATCH    = int(os.getenv("BATCH", 1_000))        # заказов в одной транзакции
+DSN      = os.getenv(                             # см. docker-compose.yml
     "PG_DSN",
-    "dbname=ecommerce host=postgres user=app password=app",  # ↔ docker-compose
+    "dbname=ecommerce host=ecommerce-db port=5432 "
+    "user=loadgen password=loadgen",
 )
 
-# ───── SQL ───────────────────────────────────────────────────────────────
+# ─────────────── SQL ─────────────────────────────────────────────────────
 ORDER_SQL = """
-INSERT INTO orders(id, user_id, amount, created_at)
-VALUES (%s, %s, %s, %s);
+INSERT INTO orders (user_id, amount, created_at)
+VALUES      (%s     , %s    , %s)
+RETURNING id;                       -- ← получаем id, который сгенерировал sequence
 """
 ITEM_SQL = """
-INSERT INTO order_items(order_id, sku, qty)
-VALUES (%s, %s, %s);
+INSERT INTO order_items (order_id, sku, qty)
+VALUES                   (%s      , %s , %s);
 """
 
-
+# ─────────────── генерация ───────────────────────────────────────────────
 def main() -> None:
     conn = psycopg2.connect(DSN)
     cur  = conn.cursor()
-
-    next_order_id = START_ID
-    deadline      = time.time() + SECONDS
+    deadline = time.time() + SECONDS
 
     while time.time() < deadline:
         for _ in range(BATCH):
-            amount = round(random.uniform(10, 500), 2)
+            # 1. заказ ----------------------------------------------------
+            amount   = round(random.uniform(10, 500), 2)
             cur.execute(
                 ORDER_SQL,
                 (
-                    next_order_id,
-                    random.randint(1, 10_000),           # user_id
+                    random.randint(1, 10_000),         # user_id
                     Decimal(str(amount)),
                     datetime.utcnow(),
                 ),
             )
+            order_id: int = cur.fetchone()[0]          # id из секвенса
 
-            for _ in range(random.randint(1, 3)):         # 1-3 позиций в заказе
+            # 2. 1-3 позиций заказа ---------------------------------------
+            for _ in range(random.randint(1, 3)):
                 cur.execute(
                     ITEM_SQL,
                     (
-                        next_order_id,
+                        order_id,
                         fake.bothify("SKU-???").upper(),
                         random.randint(1, 5),
                     ),
                 )
-            next_order_id += 1
 
-        conn.commit()                                     # одна «большая» транзакция
+        conn.commit()                                  # одна «большая» транзакция
 
     cur.close()
     conn.close()

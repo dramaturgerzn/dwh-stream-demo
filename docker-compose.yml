@@ -107,10 +107,12 @@ services:
     build:
       context: ./load-gen
     environment:
-      PG_DSN: "dbname=ecommerce host=postgres user=app password=app"
-      DURATION: "30"
-      BATCH: "1000"
+      PG_DSN: "dbname=ecommerce host=ecommerce-db port=5432 user=loadgen password=loadgen"
+      DURATION: "10"
+      BATCH: "300"
       ORDER_ID_START: "1000000"
     depends_on:
-      - postgres
+      - faust
+      - kafka
+      - clickhouse
     profiles: [ "dev-load" ]
